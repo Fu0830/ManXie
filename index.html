@@ -1090,7 +1090,7 @@ select.control{ appearance: none; -webkit-appearance: none; padding-right: 30px;
           <label for="themeName">自定义形象名字<span class="hint">印在角色图下方，留空显示“自定义形象”</span></label>
           <input id="themeName" class="control" autocomplete="off" spellcheck="false" maxlength="12" placeholder="给这个形象起个名字">
         </div>
-        <p class="char-hint">上传的图片会自动抠成透明底放到票面；换角色会连配色一起换，色相滑杆仍可自由微调</p>
+        <p class="char-hint">上传的图片自动抠成透明底；GIF/WebP 动图保留原动效；换角色会连配色一起换，色相滑杆仍可自由微调</p>
       </div>
     </section>
 
@@ -2332,15 +2332,30 @@ var X={signature:"GIF",version:"89a",trailer:59,extensionIntroducer:33,applicati
       toast('已恢复默认徽章');
     });
 
-    /* ---------- 自定义主题图（自动抠透明底） ---------- */
+    /* ---------- 自定义主题图（自动抠透明底 / 动图保留动效） ---------- */
     function loadThemeFile(file, done) {
+      var mime = (file.type || '').toLowerCase();
+      var animated = (mime === 'image/gif' || mime === 'image/webp' || mime === 'image/apng');
+      if (animated) {
+        var fr = new FileReader();
+        fr.onload = function () {
+          var dataUrl = fr.result;
+          var probe = new Image();
+          probe.onload = function () { themeDim[dataUrl] = { w: probe.width, h: probe.height }; done(dataUrl, true); };
+          probe.onerror = function () { themeDim[dataUrl] = { w: 0, h: 0 }; done(dataUrl, true); };
+          probe.src = dataUrl;
+        };
+        fr.onerror = function () { toast('动图读取失败，请换一张'); };
+        fr.readAsDataURL(file);
+        return;
+      }
       var img = new Image();
       var url = URL.createObjectURL(file);
       img.onload = function () {
         URL.revokeObjectURL(url);
         cutoutToTransparent(img, function (dataUrl, w, h) {
           themeDim[dataUrl] = { w: w, h: h };
-          done(dataUrl);
+          done(dataUrl, false);
         });
       };
       img.onerror = function () { URL.revokeObjectURL(url); toast('图片读取失败，请换一张'); };
@@ -2350,11 +2365,12 @@ var X={signature:"GIF",version:"89a",trailer:59,extensionIntroducer:33,applicati
     $('#themeFile').addEventListener('change', function (e) {
       var f = e.target.files && e.target.files[0];
       if (!f) return;
-      toast('正在抠图…');
-      loadThemeFile(f, function (dataUrl) {
+      var isAnimated = /gif|webp|apng/.test((f.type || '').toLowerCase());
+      if (!isAnimated) toast('正在抠图…');
+      loadThemeFile(f, function (dataUrl, animated) {
         state.themeImg = dataUrl;
         refreshThemeUI(); renderSlip(); save();
-        toast('主题图片已更新（透明底）');
+        toast(animated ? '主题动图已更新（保留动效）' : '主题图片已更新（透明底）');
       });
       e.target.value = '';
     });
